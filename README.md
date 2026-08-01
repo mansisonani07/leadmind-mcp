@@ -1,10 +1,4 @@
-Here's your complete README — **copy everything below** and paste it into your GitHub repo's `README.md`:
 
----
-
-**File:** `README.md` (at repo root)
-
-```markdown
 # 🧠 LeadMind MCP — AI Lead Management CRM
 
 <div align="center">
@@ -335,7 +329,3 @@ MIT License — free for personal and commercial use.
 
 </div>
 ```
-
----
-
-Paste this into `README.md` on your GitHub repo root. It has all your live links, architecture diagram, API docs, deployment guide, and badges. 🚀
