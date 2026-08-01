@@ -1,18 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 
-/**
- * Catch-all proxy: forwards /api/leadmind/* to the Python FastAPI backend.
- *
- * Uses the LEADMIND_BACKEND_URL env var to find the backend.
- *   - On Render: set LEADMIND_BACKEND_URL=https://your-backend.onrender.com
- *   - Local dev: defaults to http://localhost:8000
- *
- * Routing:
- *   /api/leadmind/health  ->  ${LEADMIND_BACKEND_URL}/health
- *   /api/leadmind/leads    ->  ${LEADMIND_BACKEND_URL}/leads
- *   /api/leadmind/dashboard ->  ${LEADMIND_BACKEND_URL}/dashboard
- */
-
 function getBackendUrl(): string {
   const envUrl = process.env.LEADMIND_BACKEND_URL;
   if (envUrl) return envUrl.replace(/\/+$/, "");
