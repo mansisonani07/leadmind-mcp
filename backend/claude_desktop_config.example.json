@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "leadmind": {
+      "command": "python",
+      "args": ["/absolute/path/to/leadmind-mcp/mcp_server.py"],
+      "env": {
+        "GROQ_API_KEY": "your_groq_api_key_here",
+        "DEMO_MODE": "true",
+        "MCP_TRANSPORT": "stdio"
+      }
+    }
+  }
+}

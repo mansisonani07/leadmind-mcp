@@ -1,0 +1,24 @@
+services:
+  # ── Python Backend (FastAPI + MCP Server) ──
+  - type: web
+    name: leadmind-backend
+    runtime: python
+    plan: free
+    buildCommand: cd backend && pip install -r requirements.txt
+    startCommand: cd backend && uvicorn api_server:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.0"
+      - key: GROQ_API_KEY
+        sync: false
+
+  # ── Next.js Frontend ──
+  - type: web
+    name: leadmind-frontend
+    runtime: node
+    plan: free
+    buildCommand: cd frontend && npm install && npm run build
+    startCommand: cd frontend && npm run start
+    envVars:
+      - key: NEXT_PUBLIC_BACKEND_URL
+        value: https://leadmind-backend.onrender.com

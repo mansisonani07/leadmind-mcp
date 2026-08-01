@@ -1,0 +1,14 @@
+# LeadMind MCP — Python dependencies
+# All free / open-source. No paid APIs required.
+
+# MCP SDK (official) — provides FastMCP, stdio + SSE transports
+mcp>=1.2.0
+
+# HTTP client for Groq API calls
+requests>=2.31.0
+
+# Optional: FastAPI webhook receiver (n8n / Gmail integration)
+# Install separately if you want webhook support:
+#   pip install fastapi uvicorn
+fastapi>=0.110.0
+uvicorn>=0.27.0
