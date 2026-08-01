@@ -1,55 +1,103 @@
-import { NextResponse } from "next/server";
-import { existsSync, readFileSync } from "fs";
+import { NextRequest, NextResponse } from "next/server";
 
 /**
- * Next.js-side health endpoint.
- *
- * Reports the status of the Python backend as seen by the instrumentation
- * hook. Useful for debugging 502 errors on the published URL without
- * needing shell access to the container.
- *
- *   GET /api
- *   -> {
- *        "frontend": "ok",
- *        "backend_status": "running" | "starting" | "failed" | "unknown",
- *        "backend_detail": {...},
- *        "backend_pid": 12345,
- *        "timestamp": "..."
- *      }
+ * Catch-all proxy: forwards /api/leadmind/* to the external Python backend.
+ * Uses NEXT_PUBLIC_BACKEND_URL (client) or BACKEND_URL (server) env var.
  */
-const STATUS_FILE = "/tmp/leadmind-backend-status.json";
+const BACKEND_URL = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
-type BackendStatus = {
-  status: "starting" | "running" | "failed";
-  pid?: number;
-  detail?: unknown;
-  ts?: string;
-};
-
-function readBackendStatus(): BackendStatus | null {
-  try {
-    if (!existsSync(STATUS_FILE)) return null;
-    const raw = readFileSync(STATUS_FILE, "utf-8");
-    return JSON.parse(raw) as BackendStatus;
-  } catch {
-    return null;
-  }
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ path: string[] }> }
+) {
+  return proxy(req, params);
 }
 
-export async function GET() {
-  const status = readBackendStatus();
-  return NextResponse.json({
-    frontend: "ok",
-    backend_status: status?.status ?? "unknown",
-    backend_detail: status?.detail ?? null,
-    backend_pid: status?.pid ?? null,
-    backend_last_update: status?.ts ?? null,
-    timestamp: new Date().toISOString(),
-    hint:
-      status?.status === "running"
-        ? "Backend reports running. If you still see 502, check that port 8000 is actually listening."
-        : status?.status === "failed"
-        ? "Backend failed to start. See /tmp/leadmind-dashboard.log on the server."
-        : "Backend status unknown. The instrumentation hook may not have run yet.",
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ path: string[] }> }
+) {
+  return proxy(req, params);
+}
+
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ path: string[] }> }
+) {
+  return proxy(req, params);
+}
+
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: Promise<{ path: string[] }> }
+) {
+  return proxy(req, params);
+}
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ path: string[] }> }
+) {
+  return proxy(req, params);
+}
+
+async function proxy(
+  req: NextRequest,
+  paramsPromise: Promise<{ path: string[] }>
+) {
+  const { path: pathSegments } = await paramsPromise;
+  const path = pathSegments.join("/");
+
+  const incomingUrl = new URL(req.url);
+  const targetUrl = new URL(`${BACKEND_URL}/${path}`);
+  incomingUrl.searchParams.forEach((value, key) => {
+    targetUrl.searchParams.set(key, value);
   });
+
+  let body: BodyInit | undefined = undefined;
+  const method = req.method;
+  if (method !== "GET" && method !== "HEAD") {
+    body = await req.text();
+  }
+
+  const headers = new Headers();
+  const skipHeaders = new Set(["host", "connection", "content-length", "transfer-encoding", "keep-alive"]);
+  req.headers.forEach((value, key) => {
+    if (!skipHeaders.has(key.toLowerCase())) {
+      headers.set(key, value);
+    }
+  });
+
+  try {
+    const upstream = await fetch(targetUrl, {
+      method,
+      headers,
+      body,
+      redirect: "manual",
+    });
+
+    const responseHeaders = new Headers();
+    upstream.headers.forEach((value, key) => {
+      if (key.toLowerCase() !== "transfer-encoding" && key.toLowerCase() !== "content-length") {
+        responseHeaders.set(key, value);
+      }
+    });
+
+    const responseBody = await upstream.arrayBuffer();
+    return new NextResponse(responseBody, {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers: responseHeaders,
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json(
+      {
+        error: "Failed to reach LeadMind backend",
+        detail: message,
+        hint: `Backend URL: ${BACKEND_URL}`,
+      },
+      { status: 502 }
+    );
+  }
 }
