@@ -77,11 +77,12 @@ async function proxy(
   });
 
   try {
-    const upstream = await fetch(targetUrl, {
+    const upstream = await fetch(targetUrl.toString(), {
       method,
       headers,
       body,
       redirect: "manual",
+      signal: AbortSignal.timeout(15000),
     });
 
     const responseHeaders = new Headers();
@@ -103,8 +104,10 @@ async function proxy(
       {
         error: "Failed to reach LeadMind backend",
         detail: message,
+        target_url: targetUrl.toString(),
         backend_url: backendUrl,
-        hint: "Set LEADMIND_BACKEND_URL env var to your backend URL (e.g. https://your-backend.onrender.com)",
+        env_set: !!process.env.LEADMIND_BACKEND_URL,
+        hint: "Set LEADMIND_BACKEND_URL env var on Render and redeploy.",
       },
       { status: 502 }
     );
