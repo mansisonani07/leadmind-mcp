@@ -95,7 +95,9 @@ export interface NextAction {
   source: "groq" | "fallback";
 }
 
-const API_BASE = "/api/leadmind";
+const API_BASE = process.env.NEXT_PUBLIC_LEADMIND_BACKEND_URL
+  ? process.env.NEXT_PUBLIC_LEADMIND_BACKEND_URL.replace(/\/+$/, "")
+  : "/api/leadmind";
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
