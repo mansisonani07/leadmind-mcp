@@ -17,13 +17,14 @@ import {
   api,
 } from "@/lib/leadmind-api";
 import { toast } from "sonner";
-import { Loader2, Plus, AlertTriangle } from "lucide-react";
+import { Loader2, Plus, AlertTriangle, RefreshCw } from "lucide-react";
 
 type LoadState = "loading" | "loaded" | "error";
 
 export function DashboardPage() {
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [debugInfo, setDebugInfo] = useState<string | null>(null);
   const [dashboard, setDashboard] = useState<DashboardType | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -47,10 +48,24 @@ export function DashboardPage() {
       setAudit(auditRes.entries);
       setLoadState("loaded");
       setErrorMsg(null);
+      setDebugInfo(null);
+      return true;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setErrorMsg(msg);
       setLoadState("error");
+      try {
+        const debugRes = await fetch("/api/leadmind/health");
+        if (!debugRes.ok) {
+          const data = await debugRes.json();
+          setDebugInfo(
+            `Target: ${data.target_url ?? "?"} | Env set: ${data.env_set ?? "?"} | Backend: ${data.backend_url ?? "?"}`
+          );
+        }
+      } catch {
+        // ignore
+      }
+      return false;
     }
   }, []);
 
@@ -60,9 +75,13 @@ export function DashboardPage() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchAll();
+    const success = await fetchAll();
     setRefreshing(false);
-    toast.success("Dashboard refreshed");
+    if (success) {
+      toast.success("Dashboard refreshed");
+    } else {
+      toast.error("Backend unreachable — check env var");
+    }
   }, [fetchAll]);
 
   const handleLeadUpdated = useCallback(() => {
@@ -87,11 +106,17 @@ export function DashboardPage() {
           </div>
           <h2 className="text-lg font-semibold">Connection Error</h2>
           <p className="text-sm text-muted-foreground">{errorMsg}</p>
+          {debugInfo && (
+            <div className="rounded-lg border bg-muted p-3 text-left font-mono text-[11px]">
+              {debugInfo}
+            </div>
+          )}
           <p className="text-xs text-muted-foreground">
-            Make sure the backend is running at the configured URL.
+            Make sure <code>LEADMIND_BACKEND_URL</code> env var is set to{" "}
+            <code>https://leadmind-mcp-1.onrender.com</code> on Render, then redeploy.
           </p>
           <Button onClick={handleRefresh} variant="outline" className="gap-2">
-            <Loader2 className="h-4 w-4" />
+            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
             Retry
           </Button>
         </div>
