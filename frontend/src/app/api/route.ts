@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
 /**
- * Catch-all proxy: forwards /api/leadmind/* to the external Python backend.
- * Uses NEXT_PUBLIC_BACKEND_URL (client) or BACKEND_URL (server) env var.
+ * Catch-all proxy: forwards /api/leadmind/* to the Python FastAPI backend
+ * on port 8000. Connects directly to localhost:8000.
+ *
+ * Example: GET /api/leadmind/leads?status=Hot
+ *   -> proxied to http://localhost:8000/api/leads?status=Hot
  */
-const BACKEND_URL = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+const BACKEND_PORT = "8000";
 
 export async function GET(
   req: NextRequest,
@@ -49,9 +52,11 @@ async function proxy(
   const path = pathSegments.join("/");
 
   const incomingUrl = new URL(req.url);
-  const targetUrl = new URL(`${BACKEND_URL}/${path}`);
+  const targetUrl = new URL(`http://localhost:${BACKEND_PORT}/api/${path}`);
   incomingUrl.searchParams.forEach((value, key) => {
-    targetUrl.searchParams.set(key, value);
+    if (key !== "XTransformPort") {
+      targetUrl.searchParams.set(key, value);
+    }
   });
 
   let body: BodyInit | undefined = undefined;
@@ -61,7 +66,13 @@ async function proxy(
   }
 
   const headers = new Headers();
-  const skipHeaders = new Set(["host", "connection", "content-length", "transfer-encoding", "keep-alive"]);
+  const skipHeaders = new Set([
+    "host",
+    "connection",
+    "content-length",
+    "transfer-encoding",
+    "keep-alive",
+  ]);
   req.headers.forEach((value, key) => {
     if (!skipHeaders.has(key.toLowerCase())) {
       headers.set(key, value);
@@ -93,9 +104,9 @@ async function proxy(
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json(
       {
-        error: "Failed to reach LeadMind backend",
+        error: "Failed to reach LeadMind backend on port 8000",
         detail: message,
-        hint: `Backend URL: ${BACKEND_URL}`,
+        hint: "Make sure the Python web_dashboard.py is running: cd leadmind-mcp && python web_dashboard.py",
       },
       { status: 502 }
     );
