@@ -1,13 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 
 /**
- * Catch-all proxy: forwards /api/leadmind/* to the Python FastAPI backend
- * on port 8000. Connects directly to localhost:8000.
+ * Catch-all proxy: forwards /api/leadmind/* to the Python FastAPI backend.
  *
- * Example: GET /api/leadmind/leads?status=Hot
- *   -> proxied to http://localhost:8000/api/leads?status=Hot
+ * Uses the LEADMIND_BACKEND_URL env var to find the backend.
+ *   - On Render: set LEADMIND_BACKEND_URL=https://your-backend.onrender.com
+ *   - Local dev: defaults to http://localhost:8000
+ *
+ * Routing:
+ *   /api/leadmind/health  ->  ${LEADMIND_BACKEND_URL}/health
+ *   /api/leadmind/leads    ->  ${LEADMIND_BACKEND_URL}/leads
+ *   /api/leadmind/dashboard ->  ${LEADMIND_BACKEND_URL}/dashboard
  */
-const BACKEND_PORT = "8000";
+
+function getBackendUrl(): string {
+  const envUrl = process.env.LEADMIND_BACKEND_URL;
+  if (envUrl) return envUrl.replace(/\/+$/, "");
+  return "http://localhost:8000";
+}
 
 export async function GET(
   req: NextRequest,
@@ -51,12 +61,12 @@ async function proxy(
   const { path: pathSegments } = await paramsPromise;
   const path = pathSegments.join("/");
 
+  const backendUrl = getBackendUrl();
   const incomingUrl = new URL(req.url);
-  const targetUrl = new URL(`http://localhost:${BACKEND_PORT}/api/${path}`);
+  const targetUrl = new URL(`${backendUrl}/${path}`);
+
   incomingUrl.searchParams.forEach((value, key) => {
-    if (key !== "XTransformPort") {
-      targetUrl.searchParams.set(key, value);
-    }
+    targetUrl.searchParams.set(key, value);
   });
 
   let body: BodyInit | undefined = undefined;
@@ -104,9 +114,10 @@ async function proxy(
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json(
       {
-        error: "Failed to reach LeadMind backend on port 8000",
+        error: "Failed to reach LeadMind backend",
         detail: message,
-        hint: "Make sure the Python web_dashboard.py is running: cd leadmind-mcp && python web_dashboard.py",
+        backend_url: backendUrl,
+        hint: "Set LEADMIND_BACKEND_URL env var to your backend URL (e.g. https://your-backend.onrender.com)",
       },
       { status: 502 }
     );
