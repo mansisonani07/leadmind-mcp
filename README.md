@@ -1,232 +1,341 @@
-# LeadMind MCP
-
-> An MCP server that turns a CRM into a conversation — reads, scores, and prioritizes every lead the instant it arrives, then exposes the entire pipeline to any MCP client (like Claude Desktop) through natural language.
-
-| What | Where | Status |
-| --- | --- | --- |
-| Live Dashboard | https://leadmind-mcp.space-z.ai | Live |
-| Source Code | [GITHUB_URL] | Public |
-| MCP Server | stdio/SSE via Claude Desktop | Healthy |
-| License | MIT | — |
+Here's your complete README — **copy everything below** and paste it into your GitHub repo's `README.md`:
 
 ---
 
-Picture a five-person sales team at a Series B SaaS company. Their leads arrive from three places: a Gmail inbox, a Stripe webhook, and a "Contact Us" form on the marketing site. Each lead looks identical at first glance — a name, an email, a message — and there are forty of them stacked up by lunchtime. The SDR on duty opens them one at a time, reading every message in full, mentally scoring urgency, and dropping the result into a spreadsheet. By the time she reaches lead number thirty, lead number three — the one from a Fortune 500 CTO asking about enterprise pricing — has gone cold. Nobody replied for six hours. The deal walked.
+**File:** `README.md` (at repo root)
 
-That pattern repeats itself in every sales org small enough to lack a dedicated RevOps team. Leads are not the problem; triage is. The information is already there, but it arrives faster than a human can thoughtfully sort it, and the cost of a slow reply compounds hour by hour. The fix is not another dashboard — dashboards only show you the fire after it has spread. The fix is a system that reads, classifies, and prioritizes every lead the instant it arrives, and that lets the human operator act on it through whatever interface they already live in.
+```markdown
+# 🧠 LeadMind MCP — AI Lead Management CRM
 
-LeadMind does exactly that, and it goes one step further: it exposes the entire capability set — classification, retrieval, status mutation, AI-suggested next actions, audit history — as a Model Context Protocol server. Plug it into Claude Desktop and you can say *"show me every hot lead from yesterday that hasn't been contacted yet"* or *"what should I do next on the Acme lead?"* and get a structured, sourced answer back. It is a CRM you can talk to, not just click through.
+<div align="center">
 
-<details>
-<summary><strong>Table of Contents</strong></summary>
+![Version](https://img.shields.io/badge/version-1.0.0-violet?style=flat-square)
+![License](https://img.shields.io/badge/license-MIT-emerald?style=flat-square)
+![Python](https://img.shields.io/badge/python-3.12-blue?style=flat-square)
+![Next.js](https://img.shields.io/badge/next.js-16-black?style=flat-square)
+![Groq](https://img.shields.io/badge/groq-llama_3.3_70b-orange?style=flat-square)
+![MCP](https://img.shields.io/badge/MCP-1.2-fuchsia?style=flat-square)
 
-- [What This Demonstrates](#what-this-demonstrates)
-- [Screenshots](#screenshots)
-- [Features](#features)
-- [Architecture](#architecture)
-- [Tech Stack](#tech-stack)
-- [Setup / Run Locally](#setup--run-locally)
-- [Connect to Claude Desktop](#connect-to-claude-desktop)
-- [License](#license)
+**Conversational AI lead management powered by the Model Context Protocol.**
+Free-tier only — Groq LLM + SQLite. Zero paid APIs.
 
-</details>
+[🌐 Live Dashboard](https://leadmind-frontend.onrender.com) · [🐍 Backend API](https://leadmind-mcp-1.onrender.com) · [📖 MCP Docs](https://modelcontextprotocol.io) · [📧 Claude Desktop Config](#-claude-desktop-integration)
 
----
-
-## What This Demonstrates
-
-This is not a wrapper around an existing CRM API. It is a from-scratch MCP server built to demonstrate what a production-grade MCP deployment actually looks like. A recruiter or hiring manager skimming this section in thirty seconds should walk away with four takeaways:
-
-- **Implements all three MCP primitives — tools, resources, and prompts.** Most portfolio MCP projects stop at `@mcp.tool` and call it a day. LeadMind ships eight tools, two resources (`leads://dashboard`, `audit://recent`), and one reusable prompt template (`weekly_lead_review`). Resources and prompts are first-class MCP primitives with distinct semantics — resources expose addressable data, prompts expose parameterized conversation starters — and using all three correctly is a stronger signal of protocol fluency than yet another tool function.
-- **Agentic reasoning, not just CRUD.** The `suggest_next_action` tool goes beyond read/write operations. It pulls the full history of a lead, passes that context to the Groq LLM, and returns a concrete recommendation ("Call within 4 hours; the prospect asked for a security questionnaire and hasn't received one"). That is the boundary between a database-with-an-API and an actual agent backend.
-- **Production-grade reliability engineering.** A 30-day TTL cache in front of the LLM means the same lead message never gets classified twice. When Groq rate-limits or goes down, the server silently falls back to a deterministic rule-based classifier (keyword-weighted Hot/Warm/Cold scoring) so the service never returns an error to the user. Every tool call is written to an audit log with timestamp and arguments — observable by design, not by accident.
-- **Built entirely on a free-tier stack, engineered for public demo traffic.** Groq's free tier handles LLM calls, SQLite (with WAL mode) handles persistence, the official Python MCP SDK handles transport, and FastAPI serves the webhook receiver. No paid APIs, no managed database, no credit card required — and the architecture is shaped to survive being posted on a public URL without collapsing on the first spike of traffic.
+</div>
 
 ---
 
-## Screenshots
+## ✨ Live Demo
 
-![Dashboard](screenshots/dashboard.png)
+> Try it right now — no login required. Dashboard resets every 4 hours.
 
-![Architecture](screenshots/how-it-works.png)
-
-![Webhook Receiver](screenshots/webhook-receiver.png)
-
----
-
-## Features
-
-### MCP Tools (8)
-
-| Tool | Description |
-| --- | --- |
-| `get_leads` | List all leads, optionally filtered by status (`hot` / `warm` / `cold`). |
-| `classify_lead` | Score a free-text lead message into Hot / Warm / Cold with confidence score and human-readable reasoning. |
-| `add_lead` | Insert a new lead (name, contact, message, source); auto-classifies on insert. |
-| `update_lead_status` | Manually override a lead's status; change is written to the audit log with a timestamp. |
-| `get_lead_stats` | Aggregate pipeline snapshot — total counts, breakdown by status and source. |
-| `get_lead_history` | Full timeline of status changes and interactions for one lead by ID. |
-| `suggest_next_action` | Generate an AI-recommended next action for a lead, grounded in its full history. |
-| `bulk_import_leads` | Ingest leads from CSV text; required columns are `name` and `message`. |
-
-### MCP Resources (2)
-
-| URI | Description |
-| --- | --- |
-| `leads://dashboard` | Live-updating summary snapshot of the whole pipeline — total counts, status mix, recent activity. |
-| `audit://recent` | Recent tool-call audit log — useful for demos to show observability and traceability. |
-
-### MCP Prompt (1)
-
-| Prompt | Description |
-| --- | --- |
-| `weekly_lead_review` | Pre-packaged prompt template for generating a weekly lead performance summary — drops the user straight into a structured retrospective conversation. |
+| | |
+|---|---|
+| **Frontend Dashboard** | [https://leadmind-frontend.onrender.com](https://leadmind-frontend.onrender.com) |
+| **Backend REST API** | [https://leadmind-mcp-1.onrender.com](https://leadmind-mcp-1.onrender.com) |
+| **API Health Check** | [https://leadmind-mcp-1.onrender.com/health](https://leadmind-mcp-1.onrender.com/health) |
+| **API Stats** | [https://leadmind-mcp-1.onrender.com/stats](https://leadmind-mcp-1.onrender.com/stats) |
 
 ---
 
-## Architecture
+## 🎯 What is LeadMind?
+
+LeadMind MCP is a complete AI-powered CRM that:
+
+- **Auto-classifies leads** as Hot / Warm / Cold using Groq's Llama-3.3-70b
+- **Suggests next actions** for each lead (AI-powered coaching)
+- **Tracks full history** — every status change, classification, and note is audited
+- **Works with Claude Desktop** via the Model Context Protocol — manage leads conversationally
+- **Runs on free-tier everything** — Groq free API + SQLite + Render free hosting
+
+---
+
+## 🏗 Architecture
 
 ```
-┌────────────────────┐     MCP (stdio / SSE)     ┌────────────────────────────────────────┐
-│  MCP Client        │  ───────────────────────►  │  LeadMind MCP Server                   │
-│  (Claude Desktop)  │                            │  ┌──────────────────────────────────┐  │
-│                    │                            │  │  8 tools  •  2 resources  •  1 prompt │
-└────────────────────┘                            │  └──────────────────────────────────┘  │
-                                                  │             │                            │
-                                                  │             ▼                            │
-                                                  │  ┌──────────────────────────────────┐  │
-                                                  │  │  FastAPI + SQLite (WAL mode)     │  │
-                                                  │  │  • classify_lead pipeline        │  │
-                                                  │  │  • audit log (every tool call)   │  │
-                                                  │  │  • webhook receiver (/webhook)   │  │
-                                                  │  └──────────────────────────────────┘  │
-                                                  └────────────────────────────────────────┘
+┌─────────────────────────────────────────────────┐
+│                  Claude Desktop                   │
+│              (MCP Client — stdio)                 │
+└──────────────────────┬──────────────────────────┘
+                       │ MCP Protocol (stdio)
+                       ▼
+┌─────────────────────────────────────────────────┐
+│            leadmind-mcp/mcp_server.py             │
+│         MCP Server — 8 Tools + 3 Resources       │
+│                                                   │
+│  ┌─────────┐  ┌──────────┐  ┌─────────────────┐ │
+│  │ Groq    │  │  Fallback│  │  Cache (5 min) │ │
+│  │ Llama   │→ │  Rules   │→ │  TTL + SQLite  │ │
+│  │ 70b     │  │  Engine  │  │  persistent    │ │
+│  └─────────┘  └──────────┘  └─────────────────┘ │
+│                       │                           │
+│                       ▼                           │
+│              ┌─────────────────┐                  │
+│              │  SQLite (WAL)   │                  │
+│              │  leadmind.db    │                  │
+│              └────────┬────────┘                  │
+└───────────────────────┼──────────────────────────┘
+                        │
+          ┌─────────────┼─────────────┐
+          │             │             │
+          ▼             ▼             ▼
+   ┌────────────┐ ┌──────────┐ ┌──────────────┐
+   │  MCP CLI   │ │ FastAPI  │ │  Next.js     │
+   │  (Claude)  │ │ REST API │ │  Dashboard   │
+   │  stdio     │ │ :8000    │ │  (Render)    │
+   └────────────┘ └──────────┘ └──────────────┘
 ```
-
-### `classify_lead` decision chain
-
-Every call to `classify_lead` walks the same chain, stopping at the first layer that returns an answer:
-
-```
-                   ┌───────────────────────┐
-   classify_lead ─►│  1. TTL Cache lookup  │  hit?  ──► return cached label + reasoning
-                   └───────────┬───────────┘
-                               │ miss
-                               ▼
-                   ┌───────────────────────┐
-                   │  2. Groq LLM call     │  200?  ──► persist + cache + return
-                   │     (Llama 3.x)       │
-                   └───────────┬───────────┘
-                               │ 429 / 5xx / timeout
-                               ▼
-                   ┌───────────────────────┐
-                   │  3. Rule-based        │  always ─► return weighted Hot/Warm/Cold
-                   │     fallback          │           (keyword scoring, deterministic)
-                   └───────────────────────┘
-```
-
-This chain is the reason the service never returns an error to the caller: the LLM is a performance optimization, not a single point of failure. If Groq is unavailable, the user still gets a defensible answer — just one produced by a simpler model.
 
 ---
 
-## Tech Stack
+## 🚀 Quick Start
 
-Every dependency below has a functional free tier. No paid APIs, no managed services, no credit card required to run or demo this project.
+### Prerequisites
+- Python 3.12+
+- [uv](https://docs.astral.sh/uv/) (recommended) or pip
+- Groq API key (free at [console.groq.com](https://console.groq.com/keys)) — optional, fallback works without it
 
-- **Python 3.12** — runtime
-- **[MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk)** (`mcp >= 1.2.0`) — official FastMCP implementation, stdio + SSE transports
-- **[Groq](https://groq.com/)** — LLM inference (Llama 3.x) on the free tier
-- **SQLite** (with WAL mode enabled) — single-file persistence, zero ops overhead
-- **[FastAPI](https://fastapi.tiangolo.com/)** (`>= 0.110.0`) — webhook receiver and dashboard API
-- **[Uvicorn](https://www.uvicorn.org/)** (`>= 0.27.0`) — ASGI server
-- **`requests`** (`>= 2.31.0`) — Groq HTTP client
-- **Claude Desktop** — reference MCP client for end-to-end testing
-
----
-
-## Setup / Run Locally
+### 1. Clone & Install
 
 ```bash
-# 1. Clone
-git clone [GITHUB_URL]
+git clone https://github.com/mansisonani07/leadmind-mcp.git
 cd leadmind-mcp
-
-# 2. Install dependencies (Python 3.10+)
 pip install -r requirements.txt
-
-# 3. Configure environment
-cp .env.example .env
-# Edit .env and set GROQ_API_KEY (free at https://console.groq.com/keys)
-
-# 4. Run the MCP server (stdio transport, for Claude Desktop)
-python mcp_server.py
-
-# 5. (Optional) Run the web dashboard + webhook receiver
-./run_dashboard.sh
-#   → Dashboard:  http://localhost:8000
-#   → Webhook:    http://localhost:8000/webhook
 ```
 
-If `GROQ_API_KEY` is unset or invalid, the server still runs — `classify_lead` automatically falls back to the rule-based scorer, so you can develop and demo without an API key.
+### 2. Run the MCP Server (Claude Desktop)
+
+```bash
+python mcp_server.py
+```
+
+### 3. Run the REST API
+
+```bash
+python api_server.py          # http://localhost:8000
+```
+
+### 4. Run the Web Dashboard
+
+```bash
+python web_dashboard.py       # http://localhost:8000 (HTML + API combined)
+```
+
+### 5. Run the Next.js Frontend
+
+```bash
+cd ..
+npm install
+LEADMIND_BACKEND_URL=http://localhost:8000 npm run dev
+```
 
 ---
 
-## Connect to Claude Desktop
+## 🤖 Claude Desktop Integration
 
-Add the following to your `claude_desktop_config.json` (macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`):
+Add this to your Claude Desktop config file:
+
+**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 
 ```json
 {
   "mcpServers": {
     "leadmind": {
       "command": "python",
-      "args": ["/absolute/path/to/leadmind-mcp/mcp_server.py"],
+      "args": ["/path/to/leadmind-mcp/mcp_server.py"],
       "env": {
-        "GROQ_API_KEY": "your_groq_api_key_here",
-        "DEMO_MODE": "true",
-        "MCP_TRANSPORT": "stdio"
+        "GROQ_API_KEY": "gsk_your_key_here"
       }
     }
   }
 }
 ```
 
-Restart Claude Desktop, then try:
-
-> *"Use LeadMind to show me every hot lead added in the last 24 hours, then suggest the next action for the most recent one."*
-
-Claude will chain `get_leads` → `suggest_next_action` automatically and return a structured, sourced answer.
-
----
-
-## License
-
-Released under the **MIT License**.
-
-```
-MIT License
-
-Copyright (c) 2025 LeadMind MCP contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
+Then ask Claude things like:
+- *"Show me all hot leads"*
+- *"Add a new lead: Sarah Chen, sarah@acme.com, interested in enterprise plan"*
+- *"What should I do next with lead #5?"*
+- *"Classify this: We need a CRM solution, budget approved, looking to sign next week"*
 
 ---
 
-Built as a demonstration of production-grade MCP server engineering, not just an API wrapper.
+## 🛠 MCP Tools Exposed
+
+| Tool | Description |
+|------|-------------|
+| `get_leads` | List leads, filter by status |
+| `classify_lead` | AI classification — Hot/Warm/Cold with reasoning |
+| `add_lead` | Add a lead + auto-classify on insert |
+| `update_lead_status` | Manual status override + history log |
+| `get_lead_stats` | Pipeline aggregate statistics |
+| `get_lead_history` | Full event timeline per lead |
+| `suggest_next_action` | AI-recommended next step for a lead |
+| `bulk_import_leads` | CSV parse + batch classify |
+
+### MCP Resources
+| URI | Description |
+|-----|-------------|
+| `leads://dashboard` | Live pipeline snapshot |
+| `audit://recent` | Recent tool-call audit log |
+
+### MCP Prompts
+| Name | Description |
+|------|-------------|
+| `weekly_lead_review` | Structured weekly summary |
+
+---
+
+## 📡 REST API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/health` | Health check + service info |
+| `GET` | `/stats` | Pipeline stats + Groq usage |
+| `GET` | `/leads?status=Hot` | List leads (optional status filter) |
+| `GET` | `/leads/{id}` | Single lead + history timeline |
+| `POST` | `/leads` | Add a lead (auto-classifies) |
+| `PATCH` | `/leads/{id}/status` | Update lead status |
+| `GET` | `/leads/{id}/next-action` | AI next-action suggestion |
+| `POST` | `/leads/bulk-csv` | Bulk import from CSV |
+| `GET` | `/audit?limit=50` | Recent tool-call audit log |
+| `GET` | `/dashboard` | Full dashboard snapshot |
+| `POST` | `/demo/reset` | Reset database to seed data |
+
+**Try it:**
+```bash
+curl https://leadmind-mcp-1.onrender.com/health
+curl https://leadmind-mcp-1.onrender.com/leads?status=Hot
+curl https://leadmind-mcp-1.onrender.com/stats
+```
+
+---
+
+## ⚡ Reliability Engineering
+
+LeadMind is built with production-grade resilience:
+
+| Feature | Description |
+|---------|-------------|
+| 🔄 **Three-tier classification** | Cache → Groq LLM → Rule-based fallback |
+| 📦 **TTL Cache** | 5-minute cache avoids redundant Groq calls |
+| 🛡️ **Rate-limit handler** | Graceful degradation on Groq 429 errors |
+| 🔁 **Auto-restart** | Dashboard auto-restarts Python if it crashes |
+| 🗄️ **SQLite WAL mode** | Concurrent reads + atomic writes |
+| 🔄 **Demo auto-reset** | Fresh data every 4 hours (configurable) |
+| 📊 **Audit logging** | Every tool call tracked with duration |
+
+---
+
+## 🎨 Dashboard Features
+
+- **6 KPI cards** — Total leads, Hot leads, Conversion rate, Avg response, Groq calls, Sources
+- **Pipeline distribution** — Visual bar chart by status
+- **Source breakdown** — Leads by acquisition channel
+- **Full leads table** — Search, filter by status, sort
+- **Lead detail drawer** — Status update, AI next action, message, timeline
+- **Add lead modal** — Auto-classifies with AI on submit
+- **Audit log** — Every tool call with Groq/fallback/cache flags
+- **MCP primitives panel** — Shows all exposed tools, resources, and prompts
+- **Dark mode** — Toggle between light and dark themes
+
+---
+
+## 🔑 Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GROQ_API_KEY` | — | Free Groq API key |
+| `DEMO_MODE` | `true` | Auto-reset DB to seed data |
+| `DEMO_RESET_INTERVAL_SEC` | `14400` | Reset interval (4 hours) |
+| `LEADMIND_AUTH_ENABLED` | `false` | Enable API key auth |
+| `LEADMIND_API_KEY` | — | API secret key when auth enabled |
+| `PORT` | `8000` | Backend listen port |
+| `NEXT_PUBLIC_LEADMIND_BACKEND_URL` | — | Backend URL for Next.js frontend |
+
+---
+
+## 📂 Project Structure
+
+```
+leadmind-mcp/
+├── mcp_server.py          # MCP server (stdio) — used by Claude Desktop
+├── api_server.py          # REST API server — used by Next.js frontend
+├── web_dashboard.py       # Self-contained HTML dashboard + API
+├── tools.py               # MCP tool implementations
+├── db.py                  # SQLite database layer
+├── groq_classifier.py     # Groq LLM classification + caching
+├── fallback_classifier.py # Rule-based fallback classifier
+├── seed_data.py           # Demo seed data (22 leads)
+├── config.py              # Configuration from env vars
+├── cache.py               # TTL cache implementation
+├── webhook_receiver.py    # n8n / Gmail webhook receiver
+├── requirements.txt        # Python dependencies
+└── claude_desktop_config.example.json
+
+src/                        # Next.js frontend (React + TypeScript)
+├── app/
+│   ├── page.tsx            # Dashboard entry point
+│   ├── api/leadmind/[...path]/route.ts  # API proxy
+│   └── layout.tsx          # Root layout with fonts + toasters
+├── components/leadmind/
+│   ├── DashboardPage.tsx   # Main dashboard orchestrator
+│   ├── Header.tsx          # App header with branding
+│   ├── StatsGrid.tsx       # KPI cards + charts
+│   ├── LeadsTable.tsx      # Searchable leads table
+│   ├── LeadDetailDrawer.tsx # Slide-out lead detail
+│   ├── AddLeadDialog.tsx   # Add lead modal
+│   ├── AuditPanel.tsx      # Tool call audit log
+│   └── McpPrimitivesPanel.tsx # MCP tools/resources display
+├── lib/
+│   ├── leadmind-api.ts     # API client (fetch wrapper)
+│   └── leadmind-ui.ts      # Status colors, formatters
+└── components/ui/          # shadcn/ui components
+```
+
+---
+
+## 🚢 Deployment
+
+### Render (Free Tier)
+
+**Backend:** `render.com` → New Web Service
+- Build: `pip install -r requirements.txt`
+- Start: `python api_server.py`
+- Set `GROQ_API_KEY` env var
+
+**Frontend:** `render.com` → New Web Service
+- Build: `npm install && npm run build`
+- Start: `next start -p $PORT`
+- Set `NEXT_PUBLIC_LEADMIND_BACKEND_URL=https://your-backend.onrender.com`
+
+---
+
+## 📄 License
+
+MIT License — free for personal and commercial use.
+
+---
+
+## 🙏 Credits
+
+- [Groq](https://groq.com) — Free LLM inference (Llama-3.3-70b)
+- [Model Context Protocol](https://modelcontextprotocol.io) by Anthropic
+- [FastAPI](https://fastapi.tiangolo.com) — Python web framework
+- [Next.js](https://nextjs.org) — React framework
+- [shadcn/ui](https://ui.shadcn.com) — UI component library
+
+---
+
+<div align="center">
+
+**Built with ❤️ by [mansisonani07](https://github.com/mansisonani07)**
+
+⭐ If you find this useful, give it a star!
+
+</div>
+```
+
+---
+
+Paste this into `README.md` on your GitHub repo root. It has all your live links, architecture diagram, API docs, deployment guide, and badges. 🚀
