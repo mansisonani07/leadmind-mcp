@@ -10,6 +10,7 @@ Run:
     python api_server.py             # listens on :8000
 
 Endpoints:
+    GET  /                           — root (service info + route list)
     GET  /health                     — basic health check
     GET  /stats                      — aggregate pipeline stats + Groq usage
     GET  /leads?status=Hot           — list leads, optional status filter
@@ -103,8 +104,29 @@ def _check_auth(x_api_key: Optional[str], require_auth: bool = False) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Health & meta
+# Root & health
 # ---------------------------------------------------------------------------
+
+@app.get("/")
+def root() -> Dict[str, Any]:
+    """Root endpoint — confirms the API is alive and lists available routes."""
+    return {
+        "service": "LeadMind MCP — REST API",
+        "version": "1.0.0",
+        "status": "running",
+        "endpoints": {
+            "health": "GET /health",
+            "stats": "GET /stats",
+            "leads": "GET /leads?status=Hot",
+            "add_lead": "POST /leads",
+            "lead_detail": "GET /leads/{id}",
+            "next_action": "GET /leads/{id}/next-action",
+            "bulk_import": "POST /leads/bulk-csv",
+            "audit": "GET /audit",
+            "dashboard": "GET /dashboard",
+        },
+    }
+
 
 @app.get("/health")
 def health() -> Dict[str, Any]:
